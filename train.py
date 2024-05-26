@@ -96,7 +96,7 @@ class TrainMain:
         logger.info(f"Model Arch:\n{self.model['ST']}")
         
         if torch.cuda.device_count() > 1:
-            print(f"Let's use {torch.cuda.device_count()} GPUs!")
+            print(f" Distributed training on {torch.cuda.device_count()} GPUs!")
             self.model["ST"] = nn.DataParallel(self.model["ST"]) 
         # opt
         optimizer_class = getattr(
