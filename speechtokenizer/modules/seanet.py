@@ -11,13 +11,14 @@ import typing as tp
 import numpy as np
 import torch.nn as nn
 import torch
-
+import GPUtil
+import logging
+logger = logging.getLogger("encoder")
 from . import (
     SConv1d,
     SConvTranspose1d,
     SLSTM
 )
-
 
 @torch.jit.script
 def snake(x, alpha):
@@ -159,6 +160,11 @@ class SEANetEncoder(nn.Module):
         ]
 
         self.model = nn.Sequential(*model)
+
+    def print_gpu_usage(self):
+        gpus = GPUtil.getGPUs()
+        for gpu in gpus:
+            logger.info(f"GPU ID {gpu.id}: {gpu.memoryUsed} MB / {gpu.memoryTotal} MB ({gpu.memoryUtil * 100}%)")
 
     def forward(self, x):
         return self.model(x)

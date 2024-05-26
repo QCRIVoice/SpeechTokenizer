@@ -10,6 +10,9 @@ import torch.nn as nn
 from einops import rearrange
 import torch
 import numpy as np
+import logging
+import GPUtil
+logger = logging.getLogger("model.py")
 
 class SpeechTokenizer(nn.Module):
     def __init__(self, config):
@@ -22,32 +25,32 @@ class SpeechTokenizer(nn.Module):
 
         '''
         super().__init__()
-        self.encoder = SEANetEncoder(n_filters=config.get('n_filters'), 
-                                     dimension=config.get('dimension'), 
-                                     ratios=config.get('strides'),
-                                     lstm=config.get('lstm_layers'),
-                                     bidirectional=config.get('bidirectional'),
-                                     dilation_base=config.get('dilation_base'),
-                                     residual_kernel_size=config.get('residual_kernel_size'),
-                                     n_residual_layers=config.get('n_residual_layers'),
-                                     activation=config.get('activation'))
-        self.sample_rate = config.get('sample_rate')
-        self.n_q = config.get('n_q')
-        self.downsample_rate = np.prod(config.get('strides'))
-        if config.get('dimension') != config.get('semantic_dimension'):
-            self.transform = nn.Linear(config.get('dimension'), config.get('semantic_dimension'))
+        self.encoder = SEANetEncoder(n_filters=config['model_params']['n_filters'], 
+                                     dimension=config['model_params']['dimension'], 
+                                     ratios=config['model_params']['strides'],
+                                     lstm=config['model_params']['lstm_layers'],
+                                     bidirectional=config['model_params']['bidirectional'],
+                                     dilation_base=config['model_params']['dilation_base'],
+                                     residual_kernel_size=config['model_params']['residual_kernel_size'],
+                                     n_residual_layers=config['model_params']['n_residual_layers'],
+                                     activation=config['model_params']['activation'])
+        self.sample_rate = config['model_params']['sample_rate']
+        self.n_q = config['model_params']['n_q']
+        self.downsample_rate = np.prod(config['model_params']['strides'])
+        if config['model_params']['dimension'] != config['model_params']['semantic_dimension']:
+            self.transform = nn.Linear(config['model_params']['dimension'], config['model_params']['semantic_dimension'])
         else:
             self.transform = nn.Identity()
-        self.quantizer = ResidualVectorQuantizer(dimension=config.get('dimension'), n_q=config.get('n_q'), bins=config.get('codebook_size'))
-        self.decoder = SEANetDecoder(n_filters=config.get('n_filters'), 
-                                     dimension=config.get('dimension'), 
-                                     ratios=config.get('strides'),
-                                     lstm=config.get('lstm_layers'),
+        self.quantizer = ResidualVectorQuantizer(dimension=config['model_params']['dimension'], n_q=config['model_params']['n_q'], bins=config['model_params']['codebook_size'])
+        self.decoder = SEANetDecoder(n_filters=config['model_params']['n_filters'], 
+                                     dimension=config['model_params']['dimension'], 
+                                     ratios=config['model_params']['strides'],
+                                     lstm=config['model_params']['lstm_layers'],
                                      bidirectional=False,
-                                     dilation_base=config.get('dilation_base'),
-                                     residual_kernel_size=config.get('residual_kernel_size'),
-                                     n_residual_layers=config.get('n_residual_layers'),
-                                     activation=config.get('activation'))
+                                     dilation_base=config['model_params']['dilation_base'],
+                                     residual_kernel_size=config['model_params']['residual_kernel_size'],
+                                     n_residual_layers=config['model_params']['n_residual_layers'],
+                                     activation=config['model_params']['activation'])
         
     @classmethod
     def load_from_checkpoint(cls, 
@@ -76,7 +79,11 @@ class SpeechTokenizer(nn.Module):
         model.load_state_dict(params)
         return model
     
-    
+    def print_gpu_usage(self):
+        gpus = GPUtil.getGPUs()
+        for gpu in gpus:
+            logger.info(f"GPU ID {gpu.id}: {gpu.memoryUsed} MB / {gpu.memoryTotal} MB ({gpu.memoryUtil * 100}%)")
+
     def forward(self, 
                 x: torch.tensor, 
                 n_q: int=None, 
@@ -103,10 +110,11 @@ class SpeechTokenizer(nn.Module):
 
         '''
         n_q = n_q if n_q else self.n_q
+
         e = self.encoder(x)
         quantized, codes, commit_loss, quantized_list = self.quantizer(e, n_q=n_q, layers=layers)
         feature = rearrange(quantized_list[0], 'b d t -> b t d')
-        feature = self.transform(feature)       
+        feature = self.transform(feature)    
         o = self.decoder(quantized)
         return o, commit_loss, feature
     

@@ -207,7 +207,8 @@ class SConv1d(nn.Module):
             padding_right = padding_total // 2
             padding_left = padding_total - padding_right
             x = pad1d(x, (padding_left, padding_right + extra_padding), mode=self.pad_mode)
-        return self.conv(x)
+        output = self.conv(x)
+        return output
 
 
 class SConvTranspose1d(nn.Module):
