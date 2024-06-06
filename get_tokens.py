@@ -7,6 +7,12 @@ import yaml
 from speechtokenizer import SpeechTokenizer
 from collections import OrderedDict
 
+'''
+To run this code:
+1.Set config_path and ckpt_path values
+2.run "python get_tokens.py wav.scp_path output_token_path"
+'''
+
 config_path = '/alt/qvoice/Speechtokenizer/SpeechTokenizer/training_config/config.yaml'
 ckpt_path = '/alt/qvoice/Speechtokenizer/SpeechTokenizer/exp/Hubert_myst_21_on2gpus_bs64/checkpoint-60000steps.pkl'
 
