@@ -29,17 +29,14 @@ class DistillLoss(nn.Module):
         aligned_embeddings = []
         for i in range(Q1.shape[0]):
             distance, path = fastdtw(Q1_np[i], S_np[i], dist=euclidean)
-            path_hubert, path_seanet = zip(*path)
-            hubert_aligned = Q1[i][list(path_hubert)]
-            seanet_aligned = S[i][list(path_seanet)]
-            aligned_embeddings.append((hubert_aligned, seanet_aligned))
+            path_Q1, path_S = zip(*path)
+            Q1_aligned = Q1[i][list(path_Q1)]
+            S_aligned = S[i][list(path_S)]
+            aligned_embeddings.append((Q1_aligned, S_aligned))
 
-        Q1_aligned = torch.stack([x[0] for x in aligned_embeddings])
-        S_aligned = torch.stack([x[1] for x in aligned_embeddings])
+        Q1 = torch.stack([x[0] for x in aligned_embeddings])
+        S = torch.stack([x[1] for x in aligned_embeddings])
 
-
-        Q1 = Q1_aligned
-        S = S_aligned
         assert Q1.shape == S.shape
         assert Q1.shape[2] == self.D
 
