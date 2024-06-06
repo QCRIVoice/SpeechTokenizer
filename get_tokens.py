@@ -11,6 +11,13 @@ from collections import OrderedDict
 To run this code:
 1.Set config_path and ckpt_path values
 2.run "python get_tokens.py wav.scp_path output_token_path"
+Output token file:
+uttId1 101 324 23 ..... 45 346
+uttId2 214 43 234 ..... 655 23
+------------------------------
+------------------------------
+uttIdn 88 897 67 ..... 244 972
+
 '''
 
 config_path = '/alt/qvoice/Speechtokenizer/SpeechTokenizer/training_config/config.yaml'
