@@ -4,9 +4,9 @@
 data:
   path: "/alt/qvoice/Speechtokenizer/SpeechTokenizer/out_features/"
   subset:
-    train: "temp"
-    valid: "temp"
-    test:  "temp"
+    train: "temp_4s"
+    valid: "temp_4s"
+    test:  "temp_4s"
 
 ###########################################################
 #                   MODEL SETTING                         #
@@ -14,7 +14,7 @@ data:
 model_params:
   n_filters: 64
   strides: [8,5,4,2]
-  dimension: 1024
+  dimension: 768
   semantic_dimension: 1024
   bidirectional: true
   dilation_base: 2
@@ -30,10 +30,12 @@ model_params:
 #                 METRIC LOSS SETTING                     #
 ###########################################################
 loss_params:
-  lambda_time_reconstruct_loss: 0.25
-  lambda_freq_reconstruct_loss: 0.25
+  lambda_time_reconstruct_loss: 0.15
+  lambda_freq_reconstruct_loss: 0.15
   lambda_commit_loss: 0.25
-  lambda_repr_distillation_loss: 0.25
+  lambda_repr_distillation_loss: 0.15
+  lambda_disriminator_loss: 0.15
+  lambda_feature_loss: 0.15
 
 
 
@@ -62,7 +64,7 @@ grad_norm: -1
 ###########################################################
 #                    INTERVAL SETTING                     #
 ###########################################################
-train_max_steps: 100000            # Number of training steps. (w/o adv)
-save_interval_steps: 20000         # Interval steps to save checkpoint.
-eval_interval_steps: 20000          # Interval steps to evaluate the network.
-log_interval_steps: 100            # Interval steps to record the training log.
+train_max_steps: 10            # Number of training steps. (w/o adv)
+save_interval_steps: 2         # Interval steps to save checkpoint.
+eval_interval_steps: 2          # Interval steps to evaluate the network.
+log_interval_steps: 2            # Interval steps to record the training log.

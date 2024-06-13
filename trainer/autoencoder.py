@@ -15,7 +15,8 @@ from tqdm import tqdm
 import GPUtil
 from fastdtw import fastdtw
 from scipy.spatial.distance import euclidean
-
+from losses.discriminator_loss import discriminator_loss
+from losses.discriminator_loss import feature_loss
 
 logger = logging.getLogger("Trainer")
 
@@ -64,11 +65,14 @@ class Trainer:
 
 
         codec_loss = 0.0
-        y_, commit_loss, z_q = self.model["ST"](x)
+        
+        y_, commit_loss, z_q, x_discriminator, fmap_discriminator = self.model["ST"](x)
 
         codec_loss = codec_loss + self._distil_loss(z_q,x_teacher)
         codec_loss += self._commit_loss(commit_loss, mode=mode)
         codec_loss += self._reconstruct_loss(y_[:,:,:x.shape[2]], x, mode=mode)
+        codec_loss += self._discriminator_loss(x_discriminator, mode=mode)
+        codec_loss += self._feature_loss(fmap_discriminator,mode=mode)
         
         self._record_loss("codec_loss", codec_loss, mode=mode)
         self._update_Speechtokenizer(codec_loss)
@@ -86,10 +90,12 @@ class Trainer:
         x_teacher = x_teacher.cuda()
 
         codec_loss = 0.0
-        y_, commit_loss, z_q = self.model["ST"](x)
+        y_, commit_loss, z_q, x_discriminator, fmap_discriminator  = self.model["ST"](x)
         codec_loss = codec_loss + self._distil_loss(z_q,x_teacher)
         codec_loss += self._commit_loss(commit_loss, mode=mode)
         codec_loss += self._reconstruct_loss(y_[:,:,:x.shape[2]], x, mode=mode)
+        codec_loss += self._discriminator_loss(x_discriminator, mode=mode)
+        codec_loss += self._feature_loss(fmap_discriminator,mode=mode)
 
         self._record_loss("codec_loss", codec_loss, mode=mode)
 
@@ -305,3 +311,36 @@ class Trainer:
         return distil_loss
         
 
+    def _discriminator_loss(self,x_discriminator, mode="train"):
+        x_df_r,x_df_g,x_ds_r,x_ds_g,x_stft_r,x_stft_gen = x_discriminator
+        loss_disc_all = 0.0
+
+        loss_disc_f, losses_disc_f_r, losses_disc_f_g = discriminator_loss(
+        x_df_r, x_df_g)
+
+        loss_disc_s, losses_disc_s_r, losses_disc_s_g = discriminator_loss(
+            x_ds_r, x_ds_g)
+
+        loss_disc_stft, losses_disc_stft_r, losses_disc_stft_g = discriminator_loss(
+            x_stft_r, x_stft_gen)
+
+        loss_disc_all = loss_disc_s + loss_disc_f + loss_disc_stft
+        loss_disc_all *= self.config["loss_params"]["lambda_disriminator_loss"]
+        self._record_loss("discriminator_loss", loss_disc_all, mode=mode)
+
+        return loss_disc_all
+
+    def _feature_loss(self,fmap_discriminator, mode='train'):
+        
+        feat_loss = 0.0
+        fmap_f_g, fmap_f_r, fmap_s_g, fmap_s_r, fmap_stftd_g, fmap_stftd_r = fmap_discriminator
+        loss_fm_f = feature_loss(fmap_f_r, fmap_f_g)
+        loss_fm_s = feature_loss(fmap_s_r, fmap_s_g)
+        loss_fm_stft = feature_loss(fmap_stftd_r, fmap_stftd_g)
+        feat_loss = loss_fm_f + loss_fm_s + loss_fm_stft
+        feat_loss *= self.config["loss_params"]["lambda_feature_loss"]
+        self._record_loss("feature_loss", feat_loss, mode=mode)
+
+        return feat_loss
+
+        
