@@ -30,13 +30,13 @@ model_params:
 #                 METRIC LOSS SETTING                     #
 ###########################################################
 loss_params:
-  lambda_time_reconstruct_loss: 0.15
-  lambda_freq_reconstruct_loss: 0.15
-  lambda_commit_loss: 0.25
-  lambda_repr_distillation_loss: 0.15
-  lambda_disriminator_loss: 0.15
-  lambda_generator_loss: 0.15
-  lambda_feature_loss: 0.15
+  lambda_time_reconstruct_loss: 0.1
+  lambda_freq_reconstruct_loss: 1
+  lambda_commit_loss: 1
+  lambda_repr_distillation_loss: 1
+  lambda_disriminator_loss: 1
+  lambda_generator_loss: 1
+  lambda_feature_loss: 1
 
 
 
