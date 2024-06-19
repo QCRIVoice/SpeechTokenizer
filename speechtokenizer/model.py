@@ -12,9 +12,6 @@ import torch
 import numpy as np
 import logging
 import GPUtil
-from speechtokenizer.discriminator.discriminator import MultiPeriodDiscriminator
-from speechtokenizer.discriminator.discriminator import MultiScaleDiscriminator
-from speechtokenizer.discriminator.discriminator import MultiScaleSTFTDiscriminator
 logger = logging.getLogger("model.py")
 
 class SpeechTokenizer(nn.Module):
@@ -54,9 +51,6 @@ class SpeechTokenizer(nn.Module):
                                      residual_kernel_size=config['model_params']['residual_kernel_size'],
                                      n_residual_layers=config['model_params']['n_residual_layers'],
                                      activation=config['model_params']['activation'])
-        self.mpd = MultiPeriodDiscriminator()
-        self.msd = MultiScaleDiscriminator()
-        self.mstftd = MultiScaleSTFTDiscriminator(32)
         
     @classmethod
     def load_from_checkpoint(cls, 
@@ -123,20 +117,7 @@ class SpeechTokenizer(nn.Module):
         feature = self.transform(feature)    
         o = self.decoder(quantized)
         
-        # MPD
-        x_df_r, x_df_g, fmap_f_r, fmap_f_g  = self.mpd(x, o.detach())
-
-        # MSD
-        x_ds_r, x_ds_g, fmap_s_r, fmap_s_g = self.msd(x, o.detach())
-
-        #MSTFT
-        x_stft_r, fmap_stftd_r  = self.mstftd(x)
-        x_stft_gen, fmap_stftd_g = self.mstftd(o.detach())
-
-        fmap_discriminator = fmap_f_g, fmap_f_r, fmap_s_g, fmap_s_r, fmap_stftd_g, fmap_stftd_r
-        x_discriminator = x_df_r,x_df_g,x_ds_r,x_ds_g,x_stft_r,x_stft_gen
-
-        return o, commit_loss, feature,x_discriminator, fmap_discriminator
+        return o, commit_loss, feature
     
     def forward_feature(self, 
                         x: torch.tensor, 

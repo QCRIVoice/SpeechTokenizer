@@ -23,6 +23,7 @@ import torch
 import torch.nn as nn
 import yaml
 import pickle
+import itertools
 from typing import Tuple
 from torch.utils.data import DataLoader
 from dataloader.collater import collate_fn
@@ -31,6 +32,11 @@ from losses.freq_reconstruct_loss import FreqReconstructLoss
 from losses.distillation_loss import DistillLoss
 from speechtokenizer.model import SpeechTokenizer
 from trainer.autoencoder import Trainer
+from speechtokenizer.discriminator.discriminator import MultiPeriodDiscriminator
+from speechtokenizer.discriminator.discriminator import MultiScaleDiscriminator
+from speechtokenizer.discriminator.discriminator import MultiScaleSTFTDiscriminator
+from losses.discriminator_loss import discriminator_loss
+from losses.discriminator_loss import feature_loss
 
 class TrainMain:
     def __init__(self, args):
@@ -68,9 +74,11 @@ class TrainMain:
         self.resume: str = args.resume
         self.data_loader = None
         self.model = None
-        self.optimizer = None
-        self.scheduler = None
-        self.criterion = None
+        self.optimizer_model = None
+        self.optimizer_disc = None
+        self.scheduler_g = None
+        self.scheduler_d = None
+        self.criterion_g = None
         self.trainer = None
 
         # initialize batch_length
@@ -91,39 +99,63 @@ class TrainMain:
     def define_model_optimizer_scheduler(self):
         # model arch
         self.model = {
-            "ST": SpeechTokenizer(self.config).cuda()
+            "ST": SpeechTokenizer(self.config).cuda(),
+            "msd": MultiScaleDiscriminator().cuda(),
+            "mpd": MultiPeriodDiscriminator().cuda(),
+            "stft_disc": MultiScaleSTFTDiscriminator(filters=32).cuda()
         }
         logger.info(f"Model Arch:\n{self.model['ST']}")
         
         if torch.cuda.device_count() > 1:
-            print(f" Distributed training on {torch.cuda.device_count()} GPUs!")
+            print(f"Let's use {torch.cuda.device_count()} GPUs!")
             self.model["ST"] = nn.DataParallel(self.model["ST"]) 
+            self.model["msd"] = nn.DataParallel(self.model["msd"])
+            self.model["mpd"] = nn.DataParallel(self.model["mpd"])
+            self.model["stft_disc"] = nn.DataParallel(self.model["stft_disc"])
         # opt
-        optimizer_class = getattr(
+        optimizer_class_model = getattr(
             torch.optim,
             self.config["model_optimizer_type"]
         )
+        optimizer_class_disc = getattr(
+            torch.optim,
+            self.config["disc_optimizer_type"]
+        )
         self.optimizer = {
-            "ST": optimizer_class(
+            "ST": optimizer_class_model(
                 self.model["ST"].parameters(),
                 **self.config["model_optimizer_params"]
+            ),
+            "disc": optimizer_class_disc(
+                itertools.chain(self.model["stft_disc"].parameters(),
+                        self.model["msd"].parameters(), self.model["mpd"].parameters()),
+                **self.config["disc_optimizer_params"]
             )
         }
 
-        # scheduler
-        scheduler_class = getattr(
+        # scheduler_g
+        scheduler_class_g = getattr(
             torch.optim.lr_scheduler,
             self.config.get("model_scheduler_type", "StepLR"),
         )
+        # scheduler_d
+        scheduler_class_d = getattr(
+            torch.optim.lr_scheduler,
+            self.config.get("disc_scheduler_type", "StepLR"),
+        )
         self.scheduler = {
-            "ST": scheduler_class(
+            "ST": scheduler_class_g(
                 optimizer=self.optimizer["ST"],
                 **self.config["model_scheduler_params"]
+            ),
+            "disc": scheduler_class_d(
+                optimizer=self.optimizer["disc"],
+                **self.config["disc_scheduler_params"]
             )
         }
 
     def define_criterion(self):
-        self.criterion = {
+        self.criterion_g = {
             "time_reconstruct_loss": TimeReconstructLoss().to(self.device),
             "freq_reconstruct_loss": FreqReconstructLoss().to(self.device),
             "distill_loss": DistillLoss(self.config['model_params']['semantic_dimension'],self.config['model_params']['projection_dim']).to(self.device)
@@ -135,7 +167,7 @@ class TrainMain:
             epochs=0,
             data_loader=self.data_loader,
             model=self.model,
-            criterion=self.criterion,
+            criterion_g=self.criterion_g,
             optimizer=self.optimizer,
             scheduler=self.scheduler,
             config=self.config,

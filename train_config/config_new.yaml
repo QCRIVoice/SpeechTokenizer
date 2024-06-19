@@ -1,0 +1,80 @@
+###########################################################
+#                   DATA SETTING                          #
+###########################################################
+data:
+  path: "/alt/qvoice/Speechtokenizer/SpeechTokenizer/out_features/"
+  subset:
+    train: "train"
+    valid: "valid"
+    test:  "test"
+
+###########################################################
+#                   MODEL SETTING                         #
+###########################################################
+model_params:
+  n_filters: 64
+  strides: [8,5,4,2]
+  dimension: 768
+  semantic_dimension: 1024
+  bidirectional: true
+  dilation_base: 2
+  residual_kernel_size: 3
+  n_residual_layers: 1
+  lstm_layers: 2
+  activation: "ELU"
+  sample_rate: 16000
+  codebook_size: 1024
+  n_q: 8
+  projection_dim: 512
+###########################################################
+#                 METRIC LOSS SETTING                     #
+###########################################################
+loss_params:
+  lambda_time_reconstruct_loss: 0.15
+  lambda_freq_reconstruct_loss: 0.15
+  lambda_commit_loss: 0.25
+  lambda_repr_distillation_loss: 0.15
+  lambda_disriminator_loss: 0.15
+  lambda_generator_loss: 0.15
+  lambda_feature_loss: 0.15
+
+
+
+###########################################################
+#                  DATA LOADER SETTING                    #
+###########################################################
+batch_size: 32              # Batch size.
+batch_length: 96            # Length of each audio in batch (training w/o adv).
+pin_memory: false            # Whether to pin memory in Pytorch DataLoader.
+num_workers: 4              # Number of workers in Pytorch DataLoader.
+
+###########################################################
+#             OPTIMIZER & SCHEDULER SETTING               #
+###########################################################
+model_optimizer_type: Adam
+disc_optimizer_type: Adam
+model_optimizer_params:
+  lr: 1.0e-4
+  betas: [0.5, 0.9]
+  weight_decay: 0.0
+disc_optimizer_params:
+  lr: 1.0e-4
+  betas: [0.5, 0.9]
+  weight_decay: 0.0
+model_scheduler_type: StepLR
+model_scheduler_params:
+  step_size: 200000      # Model's scheduler step size.
+  gamma: 1.0
+disc_scheduler_type: StepLR
+disc_scheduler_params:
+  step_size: 200000      # Model's scheduler step size.
+  gamma: 1.0
+grad_norm: -1
+
+###########################################################
+#                    INTERVAL SETTING                     #
+###########################################################
+train_max_steps: 10            # Number of training steps. (w/o adv)
+save_interval_steps: 2         # Interval steps to save checkpoint.
+eval_interval_steps: 2          # Interval steps to evaluate the network.
+log_interval_steps: 2            # Interval steps to record the training log.

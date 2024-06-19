@@ -10,6 +10,7 @@ import os
 from collections import defaultdict
 
 import torch
+import itertools
 from tensorboardX import SummaryWriter
 from tqdm import tqdm
 import GPUtil
@@ -17,6 +18,7 @@ from fastdtw import fastdtw
 from scipy.spatial.distance import euclidean
 from losses.discriminator_loss import discriminator_loss
 from losses.discriminator_loss import feature_loss
+from losses.discriminator_loss import adversarial_g_loss
 
 logger = logging.getLogger("Trainer")
 
@@ -28,7 +30,7 @@ class Trainer:
             epochs: int,
             data_loader: dict,
             model: dict,
-            criterion: dict,
+            criterion_g: dict,
             optimizer: dict,
             scheduler: dict,
             config: dict,
@@ -38,7 +40,7 @@ class Trainer:
         self.epochs = epochs
         self.data_loader = data_loader
         self.model = model
-        self.criterion = criterion
+        self.criterion_g = criterion_g
         self.optimizer = optimizer
         self.scheduler = scheduler
         self.config = config
@@ -62,20 +64,49 @@ class Trainer:
         x,x_teacher = batch
         x = x.cuda()
         x_teacher = x_teacher.cuda()
-
-
-        codec_loss = 0.0
         
-        y_, commit_loss, z_q, x_discriminator, fmap_discriminator = self.model["ST"](x)
+        for optmizer_idx in [0,1]:
+            y_, commit_loss, z_q= self.model["ST"](x)
+            if(optmizer_idx==0):
 
-        codec_loss = codec_loss + self._distil_loss(z_q,x_teacher)
-        codec_loss += self._commit_loss(commit_loss, mode=mode)
-        codec_loss += self._reconstruct_loss(y_[:,:,:x.shape[2]], x, mode=mode)
-        codec_loss += self._discriminator_loss(x_discriminator, mode=mode)
-        codec_loss += self._feature_loss(fmap_discriminator,mode=mode)
-        
-        self._record_loss("codec_loss", codec_loss, mode=mode)
-        self._update_Speechtokenizer(codec_loss)
+                codec_loss = 0.0
+
+                # MPD
+                x_df_r, x_df_g, fmap_f_r, fmap_f_g  = self.model["mpd"](x, y_.detach())
+
+                # MSD
+                x_ds_r, x_ds_g, fmap_s_r, fmap_s_g = self.model["msd"](x, y_.detach())
+
+                #MSTFT
+                x_stft_r, fmap_stftd_r  = self.model["stft_disc"](x)
+                x_stft_gen, fmap_stftd_g = self.model["stft_disc"](y_.detach())
+
+                fmap_discriminator = fmap_f_g, fmap_f_r, fmap_s_g, fmap_s_r, fmap_stftd_g, fmap_stftd_r
+                x_gen = x_df_g,x_ds_g,x_stft_gen
+
+                codec_loss += self._distil_loss(z_q,x_teacher)
+                codec_loss += self._commit_loss(commit_loss, mode=mode)
+                codec_loss += self._reconstruct_loss(y_[:,:,:x.shape[2]], x, mode=mode)
+                codec_loss += self._feature_loss(fmap_discriminator,mode=mode)
+                codec_loss += self._adversarial_g_loss(x_gen, mode=mode)
+                self._record_loss("total_codec_loss", codec_loss, mode=mode)
+                self._update_Speechtokenizer(codec_loss)
+            else:
+                disc_loss = 0.0
+                # MPD
+                x_df_r, x_df_g, _,_ = self.model["mpd"](x, y_.detach())
+
+                # MSD
+                x_ds_r, x_ds_g, _,_ = self.model["msd"](x, y_.detach())
+
+                #MSTFT
+                x_stft_r,_  = self.model["stft_disc"](x)
+                x_stft_gen, _ = self.model["stft_disc"](y_.detach())
+
+                x_discriminator = x_df_r,x_df_g,x_ds_r,x_ds_g,x_stft_r,x_stft_gen
+                disc_loss += self._discriminator_loss(x_discriminator, mode=mode)
+                self._record_loss("total_discriminator_loss", disc_loss, mode=mode)
+                self._update_Discriminator(disc_loss)
 
         self.steps += 1
         self.tqdm.update(1)
@@ -88,16 +119,48 @@ class Trainer:
         x,x_teacher = batch
         x = x.cuda()
         x_teacher = x_teacher.cuda()
+        
+        for optmizer_idx in [0,1]:
+            y_, commit_loss, z_q= self.model["ST"](x)
+            if(optmizer_idx==0):
 
-        codec_loss = 0.0
-        y_, commit_loss, z_q, x_discriminator, fmap_discriminator  = self.model["ST"](x)
-        codec_loss = codec_loss + self._distil_loss(z_q,x_teacher)
-        codec_loss += self._commit_loss(commit_loss, mode=mode)
-        codec_loss += self._reconstruct_loss(y_[:,:,:x.shape[2]], x, mode=mode)
-        codec_loss += self._discriminator_loss(x_discriminator, mode=mode)
-        codec_loss += self._feature_loss(fmap_discriminator,mode=mode)
+                codec_loss = 0.0
 
-        self._record_loss("codec_loss", codec_loss, mode=mode)
+                # MPD
+                x_df_r, x_df_g, fmap_f_r, fmap_f_g  = self.model["mpd"](x, y_.detach())
+
+                # MSD
+                x_ds_r, x_ds_g, fmap_s_r, fmap_s_g = self.model["msd"](x, y_.detach())
+
+                #MSTFT
+                x_stft_r, fmap_stftd_r  = self.model["stft_disc"](x)
+                x_stft_gen, fmap_stftd_g = self.model["stft_disc"](y_.detach())
+
+                fmap_discriminator = fmap_f_g, fmap_f_r, fmap_s_g, fmap_s_r, fmap_stftd_g, fmap_stftd_r
+                x_gen = x_df_g,x_ds_g,x_stft_gen
+
+                codec_loss += self._distil_loss(z_q,x_teacher)
+                codec_loss += self._commit_loss(commit_loss, mode=mode)
+                codec_loss += self._reconstruct_loss(y_[:,:,:x.shape[2]], x, mode=mode)
+                codec_loss += self._feature_loss(fmap_discriminator,mode=mode)
+                codec_loss += self._adversarial_g_loss(x_gen, mode=mode)
+                self._record_loss("valid_codec_loss", codec_loss, mode=mode)
+
+            else:
+                disc_loss = 0.0
+                # MPD
+                x_df_r, x_df_g, _,_ = self.model["mpd"](x, y_.detach())
+
+                # MSD
+                x_ds_r, x_ds_g, _,_ = self.model["msd"](x, y_.detach())
+
+                #MSTFT
+                x_stft_r,_  = self.model["stft_disc"](x)
+                x_stft_gen, _ = self.model["stft_disc"](y_.detach())
+
+                x_discriminator = x_df_r,x_df_g,x_ds_r,x_ds_g,x_stft_r,x_stft_gen
+                disc_loss += self._discriminator_loss(x_discriminator, mode=mode)
+                self._record_loss("valid_discriminator_loss", disc_loss, mode=mode)
 
     def run(self):
         """Run training."""
@@ -219,9 +282,9 @@ class Trainer:
         """Metric losses."""
         reconstruct_loss = 0.0
 
-        time_reconstruct_loss = self.criterion["time_reconstruct_loss"](predict_y, natural_y)
+        time_reconstruct_loss = self.criterion_g["time_reconstruct_loss"](predict_y, natural_y)
         time_reconstruct_loss *= self.config["loss_params"]["lambda_time_reconstruct_loss"]
-        freq_reconstruct_loss = self.criterion["freq_reconstruct_loss"](predict_y, natural_y)
+        freq_reconstruct_loss = self.criterion_g["freq_reconstruct_loss"](predict_y, natural_y)
         freq_reconstruct_loss *= self.config["loss_params"]["lambda_freq_reconstruct_loss"]
         repr_reconstruct_loss = time_reconstruct_loss+ freq_reconstruct_loss
         self._record_loss("reconstruct_loss", repr_reconstruct_loss, mode=mode)
@@ -240,6 +303,19 @@ class Trainer:
             )
         self.optimizer["ST"].step()
         self.scheduler["ST"].step()
+
+    def _update_Discriminator(self, repr_loss):
+        """Update generator."""
+        self.optimizer["disc"].zero_grad()
+        repr_loss.backward()
+        if self.config["grad_norm"] > 0:
+            torch.nn.utils.clip_grad_norm_(
+                itertools.chain(self.model["stft_disc"].parameters(),
+                        self.model["msd"].parameters(), self.model["mpd"].parameters()),
+                self.config["grad_norm"],
+            )
+        self.optimizer["disc"].step()
+        self.scheduler["disc"].step()
 
     def _record_loss(self, name: str, loss, mode='train'):
         """Record loss."""
@@ -303,7 +379,7 @@ class Trainer:
         
         distil_loss = 0.0
 
-        repr_distillation_loss = self.criterion["distill_loss"](x, x_teacher)
+        repr_distillation_loss = self.criterion_g["distill_loss"](x, x_teacher)
         repr_distillation_loss *= self.config["loss_params"]["lambda_repr_distillation_loss"]
         self._record_loss("distillation_loss", repr_distillation_loss, mode=mode)
         distil_loss += repr_distillation_loss
@@ -329,6 +405,22 @@ class Trainer:
         self._record_loss("discriminator_loss", loss_disc_all, mode=mode)
 
         return loss_disc_all
+    
+    def _adversarial_g_loss(self,x_gen, mode="train"):
+        x_df_g,x_ds_g,x_stft_gen = x_gen
+        loss_gen_all = 0.0
+
+        loss_gen_f = adversarial_g_loss(x_df_g)
+
+        loss_gen_s = adversarial_g_loss(x_ds_g)
+
+        loss_gen_stft = adversarial_g_loss(x_stft_gen)
+
+        loss_gen_all = loss_gen_f + loss_gen_s + loss_gen_stft
+        loss_gen_all *= self.config["loss_params"]["lambda_generator_loss"]
+        self._record_loss("generator_loss", loss_gen_all, mode=mode)
+
+        return loss_gen_all
 
     def _feature_loss(self,fmap_discriminator, mode='train'):
         

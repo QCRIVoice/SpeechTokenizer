@@ -1,14 +1,6 @@
 import torch
+import torch.nn.functional as F
 
-# def generator_loss(disc_outputs):
-#     loss = 0
-#     gen_losses = []
-#     for dg in disc_outputs:
-#         l = torch.mean((1 - dg)**2)
-#         gen_losses.append(l)
-#         loss += l
-
-#     return loss, gen_losses
 
 def discriminator_loss(disc_real_outputs, disc_generated_outputs):
     loss = 0
@@ -33,3 +25,11 @@ def feature_loss(fmap_r, fmap_g):
                 loss += torch.mean(torch.abs(rl - gl[:,:,:rl.shape[2]]))
 
     return loss * 2
+
+def adversarial_g_loss(y_disc_gen):
+    """Hinge loss"""
+    loss = 0.0
+    for i in range(len(y_disc_gen)):
+        stft_loss = F.relu(1 - y_disc_gen[i]).mean().squeeze()
+        loss += stft_loss
+    return loss / len(y_disc_gen)
