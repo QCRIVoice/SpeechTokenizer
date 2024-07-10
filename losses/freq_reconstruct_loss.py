@@ -23,7 +23,7 @@ class FreqReconstructLoss(nn.Module):
                 sample_rate=16000,
                 n_fft=2**i,
                 hop_length=2**(i//4),
-                n_mels=32,
+                n_mels=20,
                 normalized=True
             )
 

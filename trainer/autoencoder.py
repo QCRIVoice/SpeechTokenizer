@@ -16,9 +16,9 @@ from tqdm import tqdm
 import GPUtil
 from fastdtw import fastdtw
 from scipy.spatial.distance import euclidean
-from losses.discriminator_loss import discriminator_loss
-from losses.discriminator_loss import feature_loss
-from losses.discriminator_loss import adversarial_g_loss
+from losses.discriminator_loss import *
+from losses.generator_loss import *
+# from early_stop import EarlyStopping
 
 logger = logging.getLogger("Trainer")
 
@@ -30,7 +30,6 @@ class Trainer:
             epochs: int,
             data_loader: dict,
             model: dict,
-            criterion_g: dict,
             optimizer: dict,
             scheduler: dict,
             config: dict,
@@ -40,7 +39,6 @@ class Trainer:
         self.epochs = epochs
         self.data_loader = data_loader
         self.model = model
-        self.criterion_g = criterion_g
         self.optimizer = optimizer
         self.scheduler = scheduler
         self.config = config
@@ -49,24 +47,40 @@ class Trainer:
         self.total_train_loss = defaultdict(float)
         self.total_eval_loss = defaultdict(float)
         self.train_max_steps = config.get("train_max_steps", 0)
-    
-    
+        self.freq_recon_lambdas = config["loss_params"]["lambda_freq_reconstruct_loss"]
+        self.criterion = {"time_recon_loss": time_reconstruction_loss,
+                          "freq_recon_loss": frequency_reconstruction_loss,
+                          "disc_loss": discriminator_loss,
+                          "adv_loss": adversarial_g_loss,
+                          "feature_loss": feature_loss,
+                          "distill_t_axis": t_axis_distill_loss,
+                          "distill_d_axis": d_axis_distill_loss}
+        # self.early_stopping = EarlyStopping(tolerance=self.config["patience"], min_delta=15)
+        self.mel_loss_kwargs_list = []
+        mult = 1
+        for i in range(len(self.freq_recon_lambdas)):
+            self.mel_loss_kwargs_list.append({'n_fft': self.config["mel_params"]["n_fft"] // mult, 'num_mels':self.config["mel_params"]["num_mels"],'sample_rate': self.config["model_params"]["sample_rate"],
+                                'hop_size': self.config["mel_params"]["hop_size"] // mult, 'win_size': self.config["mel_params"]["win_size"] // mult, 'fmin': self.config["mel_params"]["fmin"], 
+                                'fmax':self.config["mel_params"]["fmax_for_loss"]})
+            mult = mult * 2
+        self.mel_kwargs = {'n_fft': self.config["mel_params"]["n_fft"], 'num_mels':self.config["mel_params"]["num_mels"],'sample_rate':self.config["model_params"]["sample_rate"],
+                            'hop_size': self.config["mel_params"]["hop_size"], 'win_size':self.config["mel_params"]["win_size"], 'fmin':self.config["mel_params"]["fmin"], 
+                            'fmax': self.config["mel_params"]["fmax_for_loss"]}
     def print_gpu_usage(self):
         gpus = GPUtil.getGPUs()
         for gpu in gpus:
             logger.info(f"GPU ID {gpu.id}: {gpu.memoryUsed} MB / {gpu.memoryTotal} MB ({gpu.memoryUtil * 100}%)")
 
-
-
     def _train_step(self, batch):
         """Single step of training."""
         mode = "train"
-        x,x_teacher = batch
+        x,x_teacher,lid_label = batch
         x = x.cuda()
         x_teacher = x_teacher.cuda()
+        lid_label = lid_label.cuda()
         
-        for optmizer_idx in [0,1]:
-            y_, commit_loss, z_q= self.model["ST"](x)
+        for optmizer_idx in [0,1,2]:
+            y_, commit_loss, RVQ_1= self.model["ST"](x)
             if(optmizer_idx==0):
 
                 codec_loss = 0.0
@@ -81,17 +95,20 @@ class Trainer:
                 x_stft_r, fmap_stftd_r  = self.model["stft_disc"](x)
                 x_stft_gen, fmap_stftd_g = self.model["stft_disc"](y_.detach())
 
+                #fc
+                lid_input = self.model["fc"](RVQ_1.detach())
+
                 fmap_discriminator = fmap_f_g, fmap_f_r, fmap_s_g, fmap_s_r, fmap_stftd_g, fmap_stftd_r
                 x_gen = x_df_g,x_ds_g,x_stft_gen
 
-                codec_loss += self._distil_loss(z_q,x_teacher)
+                codec_loss += self._distil_loss(RVQ_1,x_teacher)
                 codec_loss += self._commit_loss(commit_loss, mode=mode)
                 codec_loss += self._reconstruct_loss(y_[:,:,:x.shape[2]], x, mode=mode)
                 codec_loss += self._feature_loss(fmap_discriminator,mode=mode)
                 codec_loss += self._adversarial_g_loss(x_gen, mode=mode)
                 self._record_loss("total_codec_loss", codec_loss, mode=mode)
                 self._update_Speechtokenizer(codec_loss)
-            else:
+            elif(optmizer_idx==1):
                 disc_loss = 0.0
                 # MPD
                 x_df_r, x_df_g, _,_ = self.model["mpd"](x, y_.detach())
@@ -107,6 +124,9 @@ class Trainer:
                 disc_loss += self._discriminator_loss(x_discriminator, mode=mode)
                 self._record_loss("total_discriminator_loss", disc_loss, mode=mode)
                 self._update_Discriminator(disc_loss)
+            else:
+                lid_loss = self._lid_loss(lid_input,lid_label,mode=mode)
+                self._update_fc(lid_loss)
 
         self.steps += 1
         self.tqdm.update(1)
@@ -116,12 +136,13 @@ class Trainer:
     def _eval_step(self, batch):
         """Single step of evaluation."""
         mode = "eval"
-        x,x_teacher = batch
+        x,x_teacher,lid_label = batch
         x = x.cuda()
         x_teacher = x_teacher.cuda()
+        lid_label = lid_label.cuda()
         
-        for optmizer_idx in [0,1]:
-            y_, commit_loss, z_q= self.model["ST"](x)
+        for optmizer_idx in [0,1,2]:
+            y_, commit_loss, RVQ_1= self.model["ST"](x)
             if(optmizer_idx==0):
 
                 codec_loss = 0.0
@@ -136,17 +157,20 @@ class Trainer:
                 x_stft_r, fmap_stftd_r  = self.model["stft_disc"](x)
                 x_stft_gen, fmap_stftd_g = self.model["stft_disc"](y_.detach())
 
+                #fc
+                lid_input = self.model["fc"](RVQ_1.detach())
+
                 fmap_discriminator = fmap_f_g, fmap_f_r, fmap_s_g, fmap_s_r, fmap_stftd_g, fmap_stftd_r
                 x_gen = x_df_g,x_ds_g,x_stft_gen
 
-                codec_loss += self._distil_loss(z_q,x_teacher)
+                codec_loss += self._distil_loss(RVQ_1,x_teacher)
                 codec_loss += self._commit_loss(commit_loss, mode=mode)
                 codec_loss += self._reconstruct_loss(y_[:,:,:x.shape[2]], x, mode=mode)
                 codec_loss += self._feature_loss(fmap_discriminator,mode=mode)
                 codec_loss += self._adversarial_g_loss(x_gen, mode=mode)
                 self._record_loss("valid_codec_loss", codec_loss, mode=mode)
 
-            else:
+            elif(optmizer_idx==1):
                 disc_loss = 0.0
                 # MPD
                 x_df_r, x_df_g, _,_ = self.model["mpd"](x, y_.detach())
@@ -161,6 +185,8 @@ class Trainer:
                 x_discriminator = x_df_r,x_df_g,x_ds_r,x_ds_g,x_stft_r,x_stft_gen
                 disc_loss += self._discriminator_loss(x_discriminator, mode=mode)
                 self._record_loss("valid_discriminator_loss", disc_loss, mode=mode)
+            else:
+                lid_loss = self._lid_loss(lid_input,lid_label,mode=mode)
 
     def run(self):
         """Run training."""
@@ -278,20 +304,6 @@ class Trainer:
         for key in self.model.keys():
             self.model[key].train()
 
-    def _reconstruct_loss(self, predict_y, natural_y, mode='train'):
-        """Metric losses."""
-        reconstruct_loss = 0.0
-
-        time_reconstruct_loss = self.criterion_g["time_reconstruct_loss"](predict_y, natural_y)
-        time_reconstruct_loss *= self.config["loss_params"]["lambda_time_reconstruct_loss"]
-        freq_reconstruct_loss = self.criterion_g["freq_reconstruct_loss"](predict_y, natural_y)
-        freq_reconstruct_loss *= self.config["loss_params"]["lambda_freq_reconstruct_loss"]
-        repr_reconstruct_loss = time_reconstruct_loss+ freq_reconstruct_loss
-        self._record_loss("reconstruct_loss", repr_reconstruct_loss, mode=mode)
-        reconstruct_loss += repr_reconstruct_loss
-
-        return reconstruct_loss
-
     def _update_Speechtokenizer(self, repr_loss):
         """Update generator."""
         self.optimizer["ST"].zero_grad()
@@ -303,6 +315,18 @@ class Trainer:
             )
         self.optimizer["ST"].step()
         self.scheduler["ST"].step()
+
+    def _update_fc(self, repr_loss):
+        """Update generator."""
+        self.optimizer["fc"].zero_grad()
+        repr_loss.backward()
+        if self.config["grad_norm"] > 0:
+            torch.nn.utils.clip_grad_norm_(
+                self.model["fc"].parameters(),
+                self.config["grad_norm"],
+            )
+        self.optimizer["fc"].step()
+        self.scheduler["fc"].step()
 
     def _update_Discriminator(self, repr_loss):
         """Update generator."""
@@ -316,6 +340,21 @@ class Trainer:
             )
         self.optimizer["disc"].step()
         self.scheduler["disc"].step()
+
+    def _reconstruct_loss(self, predict_y, natural_y, mode='train'):
+        """Metric losses."""
+        reconstruct_loss = 0.0
+
+        time_reconstruct_loss = self.criterion["time_recon_loss"](predict_y, natural_y)
+        time_reconstruct_loss *= self.config["loss_params"]["lambda_time_reconstruct_loss"]
+
+        freq_reconstruct_loss = sum(map(lambda mel_k:mel_k[0] *self.criterion["freq_recon_loss"](predict_y, natural_y, **mel_k[1]), zip(self.freq_recon_lambdas, self.mel_loss_kwargs_list)))
+        repr_reconstruct_loss = time_reconstruct_loss+ freq_reconstruct_loss
+        self._record_loss("reconstruct_loss", repr_reconstruct_loss, mode=mode)
+        reconstruct_loss += repr_reconstruct_loss
+
+        return reconstruct_loss
+
 
     def _record_loss(self, name: str, loss, mode='train'):
         """Record loss."""
@@ -365,21 +404,22 @@ class Trainer:
         return self.finish_train
 
     def _commit_loss(self, commit_loss, label=None, mode='train'):
-        if label:
-            name = f"{mode}/commit_loss_{label}"
-        else:
-            name = f"{mode}/commit_loss"
+
         commit_loss = torch.sum(commit_loss)
         commit_loss *= self.config["loss_params"]["lambda_commit_loss"]
-        self._record_loss(name, commit_loss, mode=mode)
+        self._record_loss("commit_loss", commit_loss, mode=mode)
 
         return commit_loss
     
     def _distil_loss(self,x,x_teacher, mode='train'):
         
         distil_loss = 0.0
+        if (self.config["loss_params"]["distill_loss_type"] == "t_axis"):
+            lambda_sim = self.config["loss_params"]["lambda_repr_sim_loss"]
+            repr_distillation_loss = self.criterion["distill_t_axis"](x, x_teacher,lambda_sim)
+        else:
+            repr_distillation_loss = self.criterion["distill_d_axis"](x, x_teacher)
 
-        repr_distillation_loss = self.criterion_g["distill_loss"](x, x_teacher)
         repr_distillation_loss *= self.config["loss_params"]["lambda_repr_distillation_loss"]
         self._record_loss("distillation_loss", repr_distillation_loss, mode=mode)
         distil_loss += repr_distillation_loss
@@ -401,7 +441,7 @@ class Trainer:
             x_stft_r, x_stft_gen)
 
         loss_disc_all = loss_disc_s + loss_disc_f + loss_disc_stft
-        loss_disc_all *= self.config["loss_params"]["lambda_disriminator_loss"]
+        # loss_disc_all *= self.config["loss_params"]["lambda_disriminator_loss"]
         self._record_loss("discriminator_loss", loss_disc_all, mode=mode)
 
         return loss_disc_all
@@ -417,7 +457,7 @@ class Trainer:
         loss_gen_stft = adversarial_g_loss(x_stft_gen)
 
         loss_gen_all = loss_gen_f + loss_gen_s + loss_gen_stft
-        loss_gen_all *= self.config["loss_params"]["lambda_generator_loss"]
+        # loss_gen_all *= self.config["loss_params"]["lambda_generator_loss"]
         self._record_loss("generator_loss", loss_gen_all, mode=mode)
 
         return loss_gen_all
@@ -430,9 +470,15 @@ class Trainer:
         loss_fm_s = feature_loss(fmap_s_r, fmap_s_g)
         loss_fm_stft = feature_loss(fmap_stftd_r, fmap_stftd_g)
         feat_loss = loss_fm_f + loss_fm_s + loss_fm_stft
-        feat_loss *= self.config["loss_params"]["lambda_feature_loss"]
+        # feat_loss *= self.config["loss_params"]["lambda_feature_loss"]
         self._record_loss("feature_loss", feat_loss, mode=mode)
 
         return feat_loss
+
+    def _lid_loss(self,x,lid,mode = 'train'):
+        loss  = LIDloss(x,lid)
+        self._record_loss("LID_loss", loss, mode=mode)
+
+        return loss
 
         

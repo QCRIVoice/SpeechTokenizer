@@ -27,16 +27,13 @@ import itertools
 from typing import Tuple
 from torch.utils.data import DataLoader
 from dataloader.collater import collate_fn
-from losses.time_reconstruct_loss import TimeReconstructLoss
-from losses.freq_reconstruct_loss import FreqReconstructLoss
-from losses.distillation_loss import DistillLoss
 from speechtokenizer.model import SpeechTokenizer
 from trainer.autoencoder import Trainer
 from speechtokenizer.discriminator.discriminator import MultiPeriodDiscriminator
 from speechtokenizer.discriminator.discriminator import MultiScaleDiscriminator
 from speechtokenizer.discriminator.discriminator import MultiScaleSTFTDiscriminator
-from losses.discriminator_loss import discriminator_loss
-from losses.discriminator_loss import feature_loss
+from losses.discriminator_loss import *
+from losses.generator_loss import *
 
 class TrainMain:
     def __init__(self, args):
@@ -78,7 +75,6 @@ class TrainMain:
         self.optimizer_disc = None
         self.scheduler_g = None
         self.scheduler_d = None
-        self.criterion_g = None
         self.trainer = None
 
         # initialize batch_length
@@ -102,7 +98,8 @@ class TrainMain:
             "ST": SpeechTokenizer(self.config).cuda(),
             "msd": MultiScaleDiscriminator().cuda(),
             "mpd": MultiPeriodDiscriminator().cuda(),
-            "stft_disc": MultiScaleSTFTDiscriminator(filters=32).cuda()
+            "stft_disc": MultiScaleSTFTDiscriminator(filters=32).cuda(),
+            "fc": nn.Linear(self.config["model_params"]["semantic_dimension"], self.config["num_lang_class"]).cuda()
         }
         logger.info(f"Model Arch:\n{self.model['ST']}")
         
@@ -112,6 +109,7 @@ class TrainMain:
             self.model["msd"] = nn.DataParallel(self.model["msd"])
             self.model["mpd"] = nn.DataParallel(self.model["mpd"])
             self.model["stft_disc"] = nn.DataParallel(self.model["stft_disc"])
+            self.model["fc"] = nn.DataParallel(self.model["fc"])
         # opt
         optimizer_class_model = getattr(
             torch.optim,
@@ -120,6 +118,10 @@ class TrainMain:
         optimizer_class_disc = getattr(
             torch.optim,
             self.config["disc_optimizer_type"]
+        )
+        optimizer_class_fc = getattr(
+            torch.optim,
+            self.config["fc_optimizer_type"]
         )
         self.optimizer = {
             "ST": optimizer_class_model(
@@ -130,6 +132,10 @@ class TrainMain:
                 itertools.chain(self.model["stft_disc"].parameters(),
                         self.model["msd"].parameters(), self.model["mpd"].parameters()),
                 **self.config["disc_optimizer_params"]
+            ),
+            "fc": optimizer_class_fc(
+                self.model["fc"].parameters(),
+                **self.config["fc_optimizer_params"]
             )
         }
 
@@ -143,6 +149,10 @@ class TrainMain:
             torch.optim.lr_scheduler,
             self.config.get("disc_scheduler_type", "StepLR"),
         )
+        scheduler_class_fc = getattr(
+            torch.optim.lr_scheduler,
+            self.config.get("fc_scheduler_type","stepLR")
+        )
         self.scheduler = {
             "ST": scheduler_class_g(
                 optimizer=self.optimizer["ST"],
@@ -151,15 +161,13 @@ class TrainMain:
             "disc": scheduler_class_d(
                 optimizer=self.optimizer["disc"],
                 **self.config["disc_scheduler_params"]
+            ),
+            "fc": scheduler_class_fc(
+                optimizer = self.optimizer["fc"],
+                **self.config["fc_scheduler_params"]
             )
         }
 
-    def define_criterion(self):
-        self.criterion_g = {
-            "time_reconstruct_loss": TimeReconstructLoss().to(self.device),
-            "freq_reconstruct_loss": FreqReconstructLoss().to(self.device),
-            "distill_loss": DistillLoss(self.config['model_params']['semantic_dimension'],self.config['model_params']['projection_dim']).to(self.device)
-        }
 
     def define_trainer(self):
         self.trainer = Trainer(
@@ -167,7 +175,6 @@ class TrainMain:
             epochs=0,
             data_loader=self.data_loader,
             model=self.model,
-            criterion_g=self.criterion_g,
             optimizer=self.optimizer,
             scheduler=self.scheduler,
             config=self.config,
@@ -203,17 +210,29 @@ class TrainMain:
         data_dir = os.path.join(
             self.data_path, self.config['data']['subset'][subset]
         )
-        data = []
-        raw_audio_file = os.path.join(data_dir,"raw_audio.pickle")
-        teacher_embedding_file = os.path.join(data_dir,"teacher_embeddings.pickle")
-        
-        with open(raw_audio_file,"rb") as raw_file:
-            raw_audio = pickle.load(raw_file)
-        with open(teacher_embedding_file,"rb") as teacher_file:
-            teacher_embedding = pickle.load(teacher_file)
 
-        for i in range(len(raw_audio)):
-            data.append((raw_audio[i],teacher_embedding[i]))
+        data = []
+        label_counter = 0
+        for language in self.config["language_list"]:
+            #File paths for raw and teacher files
+            raw_path = f'raw_{language}.pickle'
+            raw_file = os.path.join(data_dir,raw_path)
+            teacher_path = f'teacher_{language}.pickle'
+            teacher_file = os.path.join(data_dir,teacher_path)
+
+            #LID Label for this dataset
+            lid_label = torch.zeros([self.config["num_lang_class"]],dtype=torch.long)
+            lid_label[label_counter] = 1
+
+            #Load raw and teacher datasets
+            with open(raw_file,"rb") as file:
+                raw = pickle.load(file)
+            with open(teacher_file,"rb") as file:
+                teacher = pickle.load(file)
+            
+            # Append dataset with label
+            for i in range(len(raw)):
+                data.append((raw[i],teacher[i],lid_label))
 
         return data
 
@@ -258,7 +277,6 @@ def train():
     train_main = TrainMain(args)
     train_main.initialize_data_loader()
     train_main.define_model_optimizer_scheduler()
-    train_main.define_criterion()
     train_main.define_trainer()
     train_main.initialize_model()
     train_main.run()
