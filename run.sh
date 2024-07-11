@@ -1,23 +1,23 @@
 #!/bin/sh
 
 
-stage=1
-layer=21
+stage=2
+layer=32
 
 
 if [ ${stage} == 1 ]; then
     python3 examples/dump_feature.py \
     --model_type hubert \
-    --tsv_path /alt/qvoice/Speechtokenizer/SpeechTokenizer/data/train/train.tsv \
-    --ckpt_path /alt/qvoice/RepCodec/checkpoint/hubert_large_ll60k.pt \
+    --tsv_path ./data/train/train.tsv \
+    --ckpt_path ./checkpoint/hubert_large_ll60k.pt \
     --layer ${layer} \
-    --feat_dir /alt/qvoice/Speechtokenizer/SpeechTokenizer/out_features/train/
+    --feat_dir ./out_features/train/
 fi
 
 if [ ${stage} == 2 ]; then
     python train.py \
-        -c /alt/qvoice/Speechtokenizer/SpeechTokenizer/training_config/config_new.yaml \
-        --tag Hubert_myst_21 \
+        -c ./training_config/config_2l.yaml \
+        --tag Whisper_32layer_ar+en \
         --exp_root exp 
 fi
 
