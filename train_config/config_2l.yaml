@@ -2,7 +2,7 @@
 #                   DATA SETTING                          #
 ###########################################################
 data:
-  path: "../out_features/"
+  path: "./out_features/"
   subset:
     train: "arabic+libri_1000hours_data"
     valid: "arabic+libri_eval"
