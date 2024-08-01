@@ -9,7 +9,7 @@ import logging
 import os
 import sys
 
-from feature_utils_whisper import get_path_iterator, dump_feature
+from feature_utils_whisper_mmap_opt import get_path_iterator, dump_feature
 
 logging.basicConfig(
     format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
@@ -17,7 +17,7 @@ logging.basicConfig(
     level=os.environ.get("LOGLEVEL", "INFO").upper(),
     stream=sys.stdout,
 )
-logger = logging.getLogger("dump_feature")
+logger = logging.getLogger("dump_feature_mmap_opt")
 
 
 def main(
@@ -30,6 +30,7 @@ def main(
         nshard: int,
         rank: int,
         feat_dir: str,
+        language: str,
         max_chunk: int,
         use_cpu: bool = False
 ):
@@ -57,7 +58,7 @@ def main(
     assert reader is not None
 
     generator, num = get_path_iterator(tsv_path)
-    dump_feature(reader, generator, num, feat_dir)
+    dump_feature(reader, generator, num, feat_dir,language)
 
 
 if __name__ == "__main__":
@@ -108,6 +109,13 @@ if __name__ == "__main__":
         "--feat_dir",
         required=True,
         type=str,
+        help="the output dir to save the representations."
+    )
+    parser.add_argument(
+        "--language",
+        required=True,
+        type=str,
+        default="english",
         help="the output dir to save the representations."
     )
     parser.add_argument(
