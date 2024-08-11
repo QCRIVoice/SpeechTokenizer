@@ -75,9 +75,9 @@ class Trainer:
         """Single step of training."""
         mode = "train"
         x,x_teacher,lid_label = batch
-        x = x.cuda()
-        x_teacher = x_teacher.cuda()
-        lid_label = lid_label.cuda()
+        x = x.to(self.device)
+        x_teacher = x_teacher.to(self.device)
+        lid_label = lid_label.to(self.device)
         
         for optmizer_idx in [0,1,2]:
             y_, commit_loss, RVQ_1= self.model["ST"](x)
@@ -137,9 +137,9 @@ class Trainer:
         """Single step of evaluation."""
         mode = "eval"
         x,x_teacher,lid_label = batch
-        x = x.cuda()
-        x_teacher = x_teacher.cuda()
-        lid_label = lid_label.cuda()
+        x = x.to(self.device)
+        x_teacher = x_teacher.to(self.device)
+        lid_label = lid_label.to(self.device)
         
         for optmizer_idx in [0,1,2]:
             y_, commit_loss, RVQ_1= self.model["ST"](x)

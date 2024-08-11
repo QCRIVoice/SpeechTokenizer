@@ -39,10 +39,14 @@ from speechtokenizer.discriminator.discriminator import MultiScaleSTFTDiscrimina
 from losses.discriminator_loss import *
 from losses.generator_loss import *
 from dataloader.dataset import STDataset
+
 class TrainMain:
     def __init__(self, args):
         # Fix seed and make backends deterministic
-        torch.distributed.init_process_group(backend='nccl')
+        world_size = torch.cuda.device_count()
+        logger.info(f"world size:{world_size}")
+        self.local_rank=int(os.environ.get('LOCAL_RANK', -1))
+        torch.distributed.init_process_group(backend='nccl',world_size=world_size,rank=self.local_rank)
         random.seed(args.seed)
         np.random.seed(args.seed)
         torch.manual_seed(args.seed)
@@ -50,8 +54,8 @@ class TrainMain:
             self.device = torch.device('cpu')
             logger.info(f"device: cpu")
         else:
-            self.device = torch.device('cuda', args.local_rank) # only supports single gpu for now
-            logger.info(f"device: gpu")
+            self.device = torch.device('cuda', self.local_rank) # only supports single gpu for now
+            logger.info(f"device: {self.device}")
             torch.cuda.manual_seed_all(args.seed)
             # if args.disable_cudnn == "False":
             #     torch.backends.cudnn.benchmark = True
@@ -74,7 +78,6 @@ class TrainMain:
 
         # initialize attribute
         self.resume: str = args.resume
-        self.local_rank = args.local_rank
         self.data_loader = None
         self.model = None
         self.optimizer_model = None
