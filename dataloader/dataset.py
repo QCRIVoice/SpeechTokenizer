@@ -83,7 +83,6 @@ class STDataset(Dataset):
                 res = fp.read().strip().split("\n")
             # for easy use. [res[i], res[i+1]) denotes the range for ith element
             res = [0] + [int(r) for r in res]
-            logger.info(f"for {file_name}, lens are {res}")
             return np.cumsum(res, dtype=int)
 
         raw_file_names= [f"{feat_dir}/raw_{language}.len" for language in languages ]
