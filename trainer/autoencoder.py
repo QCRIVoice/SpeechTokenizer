@@ -74,12 +74,11 @@ class Trainer:
     def _train_step(self, batch):
         """Single step of training."""
         mode = "train"
-        x,x_teacher,lid_label = batch
+        x,x_teacher = batch
         x = x.to(self.device)
         x_teacher = x_teacher.to(self.device)
-        lid_label = lid_label.to(self.device)
         
-        for optmizer_idx in [0,1,2]:
+        for optmizer_idx in [0,1]:
             y_, commit_loss, RVQ_1= self.model["ST"](x)
             if(optmizer_idx==0):
 
@@ -95,8 +94,6 @@ class Trainer:
                 x_stft_r, fmap_stftd_r  = self.model["stft_disc"](x)
                 x_stft_gen, fmap_stftd_g = self.model["stft_disc"](y_.detach())
 
-                #fc
-                lid_input = self.model["fc"](RVQ_1.detach())
 
                 fmap_discriminator = fmap_f_g, fmap_f_r, fmap_s_g, fmap_s_r, fmap_stftd_g, fmap_stftd_r
                 x_gen = x_df_g,x_ds_g,x_stft_gen
@@ -108,7 +105,7 @@ class Trainer:
                 codec_loss += self._adversarial_g_loss(x_gen, mode=mode)
                 self._record_loss("total_codec_loss", codec_loss, mode=mode)
                 self._update_Speechtokenizer(codec_loss)
-            elif(optmizer_idx==1):
+            else:
                 disc_loss = 0.0
                 # MPD
                 x_df_r, x_df_g, _,_ = self.model["mpd"](x, y_.detach())
@@ -124,9 +121,6 @@ class Trainer:
                 disc_loss += self._discriminator_loss(x_discriminator, mode=mode)
                 self._record_loss("total_discriminator_loss", disc_loss, mode=mode)
                 self._update_Discriminator(disc_loss)
-            else:
-                lid_loss = self._lid_loss(lid_input,lid_label,mode=mode)
-                self._update_fc(lid_loss)
 
         self.steps += 1
         self.tqdm.update(1)
@@ -136,12 +130,12 @@ class Trainer:
     def _eval_step(self, batch):
         """Single step of evaluation."""
         mode = "eval"
-        x,x_teacher,lid_label = batch
+        x,x_teacher = batch
         x = x.to(self.device)
         x_teacher = x_teacher.to(self.device)
-        lid_label = lid_label.to(self.device)
+
         
-        for optmizer_idx in [0,1,2]:
+        for optmizer_idx in [0,1]:
             y_, commit_loss, RVQ_1= self.model["ST"](x)
             if(optmizer_idx==0):
 
@@ -157,8 +151,6 @@ class Trainer:
                 x_stft_r, fmap_stftd_r  = self.model["stft_disc"](x)
                 x_stft_gen, fmap_stftd_g = self.model["stft_disc"](y_.detach())
 
-                #fc
-                lid_input = self.model["fc"](RVQ_1.detach())
 
                 fmap_discriminator = fmap_f_g, fmap_f_r, fmap_s_g, fmap_s_r, fmap_stftd_g, fmap_stftd_r
                 x_gen = x_df_g,x_ds_g,x_stft_gen
@@ -170,7 +162,7 @@ class Trainer:
                 codec_loss += self._adversarial_g_loss(x_gen, mode=mode)
                 self._record_loss("valid_codec_loss", codec_loss, mode=mode)
 
-            elif(optmizer_idx==1):
+            else:
                 disc_loss = 0.0
                 # MPD
                 x_df_r, x_df_g, _,_ = self.model["mpd"](x, y_.detach())
@@ -185,8 +177,7 @@ class Trainer:
                 x_discriminator = x_df_r,x_df_g,x_ds_r,x_ds_g,x_stft_r,x_stft_gen
                 disc_loss += self._discriminator_loss(x_discriminator, mode=mode)
                 self._record_loss("valid_discriminator_loss", disc_loss, mode=mode)
-            else:
-                lid_loss = self._lid_loss(lid_input,lid_label,mode=mode)
+
 
     def run(self):
         """Run training."""
@@ -315,18 +306,6 @@ class Trainer:
             )
         self.optimizer["ST"].step()
         self.scheduler["ST"].step()
-
-    def _update_fc(self, repr_loss):
-        """Update generator."""
-        self.optimizer["fc"].zero_grad()
-        repr_loss.backward()
-        if self.config["grad_norm"] > 0:
-            torch.nn.utils.clip_grad_norm_(
-                self.model["fc"].parameters(),
-                self.config["grad_norm"],
-            )
-        self.optimizer["fc"].step()
-        self.scheduler["fc"].step()
 
     def _update_Discriminator(self, repr_loss):
         """Update generator."""
@@ -475,10 +454,5 @@ class Trainer:
 
         return feat_loss
 
-    def _lid_loss(self,x,lid,mode = 'train'):
-        loss  = LIDloss(x,lid)
-        self._record_loss("LID_loss", loss, mode=mode)
-
-        return loss
 
         

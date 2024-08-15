@@ -2,11 +2,11 @@
 #                   DATA SETTING                          #
 ###########################################################
 data:
-  path: "./out_features/"
+  path: "/alt-asr/vsukhadia/SpeechTokenizer/out_features/arabic+libri_full_data/"
   subset:
-    train: "arabic+libri_1000hours_data"
-    valid: "arabic+libri_eval"
-    test:  "arabic+libri_test"
+    train: "train"
+    valid: "eval"
+    test:  "test"
 
 ###########################################################
 #                   MODEL SETTING                         #
@@ -50,7 +50,7 @@ mel_params:
 ###########################################################
 #                  DATA LOADER SETTING                    #
 ###########################################################
-batch_size: 32              # Batch size.
+batch_size: 20              # Batch size.
 batch_length: 96            # Length of each audio in batch (training w/o adv).
 pin_memory: false            # Whether to pin memory in Pytorch DataLoader.
 num_workers: 4              # Number of workers in Pytorch DataLoader.
@@ -61,16 +61,11 @@ language_list: ["arabic","english"]
 ###########################################################
 model_optimizer_type: Adam
 disc_optimizer_type: Adam
-fc_optimizer_type: Adam
 model_optimizer_params:
   lr: 1.0e-4
   betas: [0.5, 0.9]
   weight_decay: 0.0
 
-fc_optimizer_params:
-  lr: 1.0e-4
-  betas: [0.5, 0.9]
-  weight_decay: 0.0
 
 disc_optimizer_params:
   lr: 1.0e-4
@@ -81,10 +76,6 @@ model_scheduler_params:
   step_size: 200000      # Model's scheduler step size.
   gamma: 1.0
 
-fc_scheduler_type: StepLR
-fc_scheduler_params:
-  step_size: 200000      # Model's scheduler step size.
-  gamma: 1.0
 disc_scheduler_type: StepLR
 disc_scheduler_params:
   step_size: 200000      # Model's scheduler step size.

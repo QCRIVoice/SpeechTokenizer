@@ -15,9 +15,9 @@ if [ ${stage} == 1 ]; then
 fi
 
 if [ ${stage} == 2 ]; then
-    OMP_NUM_THREADS=12 python -m torch.distributed.run --nproc_per_node=4 train_mmap_v2.py \
+    OMP_NUM_THREADS=12 python -m torch.distributed.run --nproc_per_node=3 train_mmap_v2.py \
         -c ./train_config/config_2l.yaml \
-        --tag Whisper_32layer_ar+en \
+        --tag Whisper_32layer_ar+en_baseline \
         --exp_root exp 
 fi
 

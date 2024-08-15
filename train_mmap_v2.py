@@ -107,8 +107,7 @@ class TrainMain:
             "ST": SpeechTokenizer(self.config).to(self.device),
             "msd": MultiScaleDiscriminator().to(self.device),
             "mpd": MultiPeriodDiscriminator().to(self.device),
-            "stft_disc": MultiScaleSTFTDiscriminator(filters=32).to(self.device),
-            "fc": nn.Linear(self.config["model_params"]["semantic_dimension"], len(self.config["language_list"])).to(self.device)
+            "stft_disc": MultiScaleSTFTDiscriminator(filters=32).to(self.device)
         }
         logger.info(f"Model Arch:\n{self.model['ST']}")
         
@@ -118,7 +117,6 @@ class TrainMain:
             self.model["msd"] = DDP(self.model["msd"],device_ids=[self.local_rank],output_device=self.local_rank)
             self.model["mpd"] = DDP(self.model["mpd"],device_ids=[self.local_rank],output_device=self.local_rank)
             self.model["stft_disc"] = DDP(self.model["stft_disc"],device_ids=[self.local_rank],output_device=self.local_rank)
-            self.model["fc"] = DDP(self.model["fc"],device_ids=[self.local_rank],output_device=self.local_rank)
         # opt
         optimizer_class_model = getattr(
             torch.optim,
@@ -128,10 +126,7 @@ class TrainMain:
             torch.optim,
             self.config["disc_optimizer_type"]
         )
-        optimizer_class_fc = getattr(
-            torch.optim,
-            self.config["fc_optimizer_type"]
-        )
+
         self.optimizer = {
             "ST": optimizer_class_model(
                 self.model["ST"].parameters(),
@@ -141,10 +136,6 @@ class TrainMain:
                 itertools.chain(self.model["stft_disc"].parameters(),
                         self.model["msd"].parameters(), self.model["mpd"].parameters()),
                 **self.config["disc_optimizer_params"]
-            ),
-            "fc": optimizer_class_fc(
-                self.model["fc"].parameters(),
-                **self.config["fc_optimizer_params"]
             )
         }
 
@@ -158,10 +149,7 @@ class TrainMain:
             torch.optim.lr_scheduler,
             self.config.get("disc_scheduler_type", "StepLR"),
         )
-        scheduler_class_fc = getattr(
-            torch.optim.lr_scheduler,
-            self.config.get("fc_scheduler_type","stepLR")
-        )
+
         self.scheduler = {
             "ST": scheduler_class_g(
                 optimizer=self.optimizer["ST"],
@@ -170,10 +158,6 @@ class TrainMain:
             "disc": scheduler_class_d(
                 optimizer=self.optimizer["disc"],
                 **self.config["disc_scheduler_params"]
-            ),
-            "fc": scheduler_class_fc(
-                optimizer = self.optimizer["fc"],
-                **self.config["fc_scheduler_params"]
             )
         }
 

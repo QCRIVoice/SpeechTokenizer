@@ -1,0 +1,85 @@
+batch_length: 96
+batch_size: 20
+config: ./train_config/config_2l.yaml
+data:
+  path: /alt-asr/vsukhadia/SpeechTokenizer/out_features/arabic+libri_full_data/
+  subset:
+    test: test
+    train: train
+    valid: eval
+disable_cudnn: 'False'
+disc_optimizer_params:
+  betas:
+  - 0.5
+  - 0.9
+  lr: 0.0001
+  weight_decay: 0.0
+disc_optimizer_type: Adam
+disc_scheduler_params:
+  gamma: 1.0
+  step_size: 200000
+disc_scheduler_type: StepLR
+eval_interval_steps: 2000
+exp_root: exp
+grad_norm: -1
+language_list:
+- arabic
+- english
+local_rank: null
+log_interval_steps: 100
+loss_params:
+  distill_loss_type: d_axis
+  lambda_commit_loss: 10
+  lambda_freq_reconstruct_loss:
+  - 45
+  - 1
+  - 1
+  - 1
+  lambda_repr_distillation_loss: 120
+  lambda_time_reconstruct_loss: 500
+mel_params:
+  fmax_for_loss: null
+  fmin: 0
+  hop_size: 240
+  n_fft: 1024
+  num_mels: 80
+  win_size: 1024
+model_optimizer_params:
+  betas:
+  - 0.5
+  - 0.9
+  lr: 0.0001
+  weight_decay: 0.0
+model_optimizer_type: Adam
+model_params:
+  activation: ELU
+  bidirectional: true
+  codebook_size: 1024
+  dilation_base: 2
+  dimension: 768
+  lstm_layers: 2
+  n_filters: 64
+  n_q: 8
+  n_residual_layers: 1
+  residual_kernel_size: 3
+  sample_rate: 16000
+  semantic_dimension: 1280
+  strides:
+  - 8
+  - 5
+  - 4
+  - 2
+model_scheduler_params:
+  gamma: 1.0
+  step_size: 200000
+model_scheduler_type: StepLR
+num_lang_class: 2
+num_workers: 4
+outdir: exp/Whisper_32layer_ar+en_baseline
+pin_memory: false
+resume: ''
+save_interval_steps: 20000
+seed: 1337
+tag: Whisper_32layer_ar+en_baseline
+train_max_steps: 200000
+world_size: null

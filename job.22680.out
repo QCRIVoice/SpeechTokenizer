@@ -1,0 +1,66 @@
+ERROR: Unable to locate a modulefile for 'cmake'
+Traceback (most recent call last):
+Traceback (most recent call last):
+  File "train_mmap_v2.py", line 35, in <module>
+Traceback (most recent call last):
+  File "train_mmap_v2.py", line 35, in <module>
+  File "train_mmap_v2.py", line 35, in <module>
+    from trainer.autoencoder import Trainer
+  File "/alt-asr/vsukhadia/Speechtokenizer_baseline/SpeechTokenizer/trainer/autoencoder.py", line 14, in <module>
+    from trainer.autoencoder import Trainer
+  File "/alt-asr/vsukhadia/Speechtokenizer_baseline/SpeechTokenizer/trainer/autoencoder.py", line 14, in <module>
+    from trainer.autoencoder import Trainer
+  File "/alt-asr/vsukhadia/Speechtokenizer_baseline/SpeechTokenizer/trainer/autoencoder.py", line 14, in <module>
+    from tensorboardX import SummaryWriter
+ModuleNotFoundError: No module named 'tensorboardX'
+    from tensorboardX import SummaryWriter
+ModuleNotFoundError: No module named 'tensorboardX'
+    from tensorboardX import SummaryWriter
+ModuleNotFoundError: No module named 'tensorboardX'
+ERROR:torch.distributed.elastic.multiprocessing.api:failed (exitcode: 1) local_rank: 0 (pid: 30171) of binary: /export/home/vsukhadia/anaconda3/envs/espnet/bin/python
+Traceback (most recent call last):
+  File "/export/home/vsukhadia/anaconda3/envs/espnet/lib/python3.8/runpy.py", line 194, in _run_module_as_main
+    return _run_code(code, main_globals, None,
+  File "/export/home/vsukhadia/anaconda3/envs/espnet/lib/python3.8/runpy.py", line 87, in _run_code
+    exec(code, run_globals)
+  File "/export/home/vsukhadia/anaconda3/envs/espnet/lib/python3.8/site-packages/torch/distributed/run.py", line 765, in <module>
+    main()
+  File "/export/home/vsukhadia/anaconda3/envs/espnet/lib/python3.8/site-packages/torch/distributed/elastic/multiprocessing/errors/__init__.py", line 345, in wrapper
+    return f(*args, **kwargs)
+  File "/export/home/vsukhadia/anaconda3/envs/espnet/lib/python3.8/site-packages/torch/distributed/run.py", line 761, in main
+    run(args)
+  File "/export/home/vsukhadia/anaconda3/envs/espnet/lib/python3.8/site-packages/torch/distributed/run.py", line 752, in run
+    elastic_launch(
+  File "/export/home/vsukhadia/anaconda3/envs/espnet/lib/python3.8/site-packages/torch/distributed/launcher/api.py", line 131, in __call__
+    return launch_agent(self._config, self._entrypoint, list(args))
+  File "/export/home/vsukhadia/anaconda3/envs/espnet/lib/python3.8/site-packages/torch/distributed/launcher/api.py", line 245, in launch_agent
+    raise ChildFailedError(
+torch.distributed.elastic.multiprocessing.errors.ChildFailedError: 
+============================================================
+train_mmap_v2.py FAILED
+------------------------------------------------------------
+Failures:
+[1]:
+  time      : 2024-08-15_15:36:36
+  host      : crimv3mgpu017.cm.cluster
+  rank      : 1 (local_rank: 1)
+  exitcode  : 1 (pid: 30172)
+  error_file: <N/A>
+  traceback : To enable traceback see: https://pytorch.org/docs/stable/elastic/errors.html
+[2]:
+  time      : 2024-08-15_15:36:36
+  host      : crimv3mgpu017.cm.cluster
+  rank      : 2 (local_rank: 2)
+  exitcode  : 1 (pid: 30173)
+  error_file: <N/A>
+  traceback : To enable traceback see: https://pytorch.org/docs/stable/elastic/errors.html
+------------------------------------------------------------
+Root Cause (first observed failure):
+[0]:
+  time      : 2024-08-15_15:36:36
+  host      : crimv3mgpu017.cm.cluster
+  rank      : 0 (local_rank: 0)
+  exitcode  : 1 (pid: 30171)
+  error_file: <N/A>
+  traceback : To enable traceback see: https://pytorch.org/docs/stable/elastic/errors.html
+============================================================
